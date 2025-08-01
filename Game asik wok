@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Emoji Shooter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: black; color: white; font-family: sans-serif; }
+    #gameCanvas { background: #111; display: block; margin: auto; }
+    #controls { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; font-size: 30px; }
+    #loading, #winScreen {
+      position: fixed; width: 100%; height: 100%;
+      background: #000; color: white; display: flex;
+      justify-content: center; align-items: center;
+      flex-direction: column; font-size: 24px;
+    }
+    button { font-size: 18px; padding: 8px 16px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div>Memuat... <span id="percent">0%</span></div>
+</div>
+
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+
+<div id="controls">
+  <span onclick="move('up')">👆</span>
+  <span onclick="move('down')">👇</span>
+  <span onclick="move('left')">👈</span>
+  <span onclick="move('right')">👉</span>
+  <span onclick="shoot()">✊</span>
+</div>
+
+<div id="winScreen" style="display:none;">
+  <h1>KAMU MENANG!</h1>
+  <button onclick="restart()">ULANG</button>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let player = { x: 200, y: 500, size: 30, hp: 200, shield: false };
+let bullets = [], enemies = [], enemyBullets = [];
+let score = 0, shotgun = false;
+let lastShot = 0;
+let gameOver = false;
+
+const emojis = [
+  { char: "😈", hp: 1 },
+  { char: "😹", hp: 2 },
+  { char: "👹", hp: 3 },
+  { char: "☠️", hp: 4 },
+  { char: "👾", hp: 5 },
+];
+
+function move(dir) {
+  const speed = 10;
+  if (dir === "up") player.y -= speed;
+  if (dir === "down") player.y += speed;
+  if (dir === "left") player.x -= speed;
+  if (dir === "right") player.x += speed;
+}
+
+function shoot() {
+  const now = Date.now();
+  if (now - lastShot < 200 && !shotgun) return;
+  lastShot = now;
+
+  if (shotgun) {
+    for (let i = -2; i <= 2; i++) {
+      bullets.push({ x: player.x, y: player.y, dx: i * 1.5, dy: -5 });
+    }
+  } else {
+    bullets.push({ x: player.x, y: player.y, dx: 0, dy: -5 });
+  }
+}
+
+function spawnEnemy() {
+  const e = Object.assign({}, emojis[Math.floor(Math.random() * emojis.length)]);
+  e.x = Math.random() * 370;
+  e.y = -30;
+  e.size = 30;
+  e.originalHp = e.hp;
+  enemies.push(e);
+}
+
+function enemyShoot(e) {
+  enemyBullets.push({ x: e.x, y: e.y, dy: 3 });
+}
+
+function enterFullscreen() {
+  const el = document.documentElement;
+  if (el.requestFullscreen) el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  else if (el.msRequestFullscreen) el.msRequestFullscreen();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Player
+  ctx.font = "28px serif";
+  ctx.fillText("🗿", player.x, player.y);
+  ctx.fillStyle = "lime";
+  ctx.fillRect(10, 10, player.hp, 10);
+
+  // Score
+  ctx.fillStyle = "white";
+  ctx.fillText("Skor: " + score, 300, 20);
+
+  // Bullets
+  bullets.forEach(b => {
+    ctx.fillText("✊", b.x, b.y);
+    b.x += b.dx;
+    b.y += b.dy;
+  });
+
+  // Enemies
+  enemies.forEach(e => {
+    ctx.fillText(e.char, e.x, e.y);
+    e.y += 1;
+    if (Math.random() < 0.01) enemyShoot(e);
+  });
+
+  // Enemy Bullets
+  enemyBullets.forEach(b => {
+    ctx.fillStyle = "red";
+    ctx.fillRect(b.x, b.y, 5, 10);
+    b.y += b.dy;
+  });
+
+  checkCollision();
+}
+
+function checkCollision() {
+  bullets = bullets.filter(b => {
+    for (let e of enemies) {
+      if (Math.abs(b.x - e.x) < 20 && Math.abs(b.y - e.y) < 20) {
+        e.hp -= 1;
+        if (e.hp <= 0) {
+          score++;
+          enemies.splice(enemies.indexOf(e), 1);
+        }
+        return false;
+      }
+    }
+    return b.y > 0;
+  });
+
+  enemyBullets = enemyBullets.filter(b => {
+    if (Math.abs(b.x - player.x) < 20 && Math.abs(b.y - player.y) < 30) {
+      if (!player.shield) player.hp -= 10;
+      return false;
+    }
+    return b.y < canvas.height;
+  });
+
+  enemies.forEach(e => {
+    if (Math.abs(e.x - player.x) < 20 && Math.abs(e.y - player.y) < 30) {
+      if (!player.shield) player.hp -= 20;
+    }
+  });
+
+  if (player.hp <= 0) endGame(false);
+  if (score >= 100) endGame(true);
+}
+
+function loop() {
+  draw();
+  if (!gameOver) requestAnimationFrame(loop);
+}
+
+function endGame(win) {
+  if (win) {
+    gameOver = true;
+    document.getElementById("winScreen").style.display = "flex";
+  } else {
+    // RESPWAN + RESET SKOR
+    player = { x: 200, y: 500, size: 30, hp: 200, shield: false };
+    bullets = [];
+    enemyBullets = [];
+    score = 0;
+  }
+}
+
+function restart() {
+  player = { x: 200, y: 500, size: 30, hp: 200, shield: false };
+  bullets = []; enemies = []; enemyBullets = [];
+  score = 0; shotgun = false;
+  gameOver = false;
+  document.getElementById("winScreen").style.display = "none";
+  loop();
+}
+
+function setupPowerups() {
+  setInterval(() => {
+    shotgun = true;
+    setTimeout(() => shotgun = false, 10000);
+  }, 30000);
+
+  setInterval(() => {
+    player.shield = true;
+    setTimeout(() => player.shield = false, 10000);
+  }, 60000);
+
+  setInterval(() => {
+    enemies = [];
+  }, 120000);
+}
+
+// Loading screen
+let percent = 0;
+let loadingInterval = setInterval(() => {
+  percent += 1;
+  document.getElementById("percent").innerText = percent + "%";
+  if (percent >= 100) {
+    clearInterval(loadingInterval);
+    document.getElementById("loading").style.display = "none";
+    enterFullscreen();
+    loop();
+    setInterval(spawnEnemy, 1500);
+    setupPowerups();
+  }
+}, 30);
+</script>
+
+</body>
+</html>
